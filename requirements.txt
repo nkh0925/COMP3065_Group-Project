@@ -1,0 +1,11 @@
+# kaggle datasets download -d emineyetm/fake-news-detection-datasets
+
+# Kaggle数据集下载核心依赖
+kaggle>=1.6.14
+# 数据基础处理与验证依赖
+pandas>=2.0.0
+numpy>=1.24.0
+# 环境变量管理（保护Kaggle密钥）
+python-dotenv>=1.0.0
+# 基础文件操作依赖
+tqdm>=4.65.0
