@@ -1,0 +1,62 @@
+# ============================================================
+# ISOT Fake News Detection — Project Configuration
+# ============================================================
+# This file centralises ALL hyperparameters and paths used by
+# the data-loading / preprocessing / training pipeline.
+# ============================================================
+
+# ------ Data Paths ------
+data:
+  raw_dir: "data/raw"                 # directory containing True.csv & Fake.csv
+  processed_dir: "data/processed"     # directory for processed artefacts
+  true_csv: "True.csv"
+  fake_csv: "Fake.csv"
+
+# ------ Text Preprocessing ------
+preprocessing:
+  text_column: "text"                 # column name used as model input
+  max_seq_len: 256                    # max tokens per sample (pad / truncate)
+  min_word_freq: 2                    # minimum word frequency to be included in vocab
+
+# ------ Dataset Splitting ------
+split:
+  test_size: 0.15                     # fraction held out for final test
+  val_size: 0.15                      # fraction of remaining data for validation
+  random_seed: 42                     # reproducibility seed (used everywhere)
+
+# ------ DataLoader ------
+dataloader:
+  batch_size: 64
+  num_workers: 2
+  pin_memory: true                    # set false if NOT using CUDA
+
+# ------ Embedding ------
+embedding:
+  glove_dir: "data/glove"            # directory for pre-trained GloVe vectors
+  glove_dim: 100                     # GloVe vector dimension (50 / 100 / 200 / 300)
+
+# ------ LSTM Model ------
+model:
+  embed_dim: 100                     # must match glove_dim if using GloVe
+  hidden_dim: 128                    # LSTM hidden state size
+  num_layers: 2                      # number of stacked LSTM layers
+  num_classes: 2                     # Real (0) vs Fake (1)
+  bidirectional: true                # bidirectional LSTM
+  dropout_embed: 0.3                 # dropout after embedding layer
+  dropout_lstm: 0.3                  # dropout between LSTM layers
+  dropout_fc: 0.5                    # dropout before fully connected layer
+  freeze_embeddings: false           # freeze pre-trained embeddings
+
+# ------ Training ------
+training:
+  num_epochs: 20                     # maximum training epochs
+  learning_rate: 0.001               # initial learning rate
+  weight_decay: 0.00001              # L2 regularisation
+  optimizer: "adam"                   # "adam" or "adamw"
+  early_stopping_patience: 5         # epochs without recall_fake improvement
+  save_dir: "checkpoints"            # directory for model checkpoints
+  class_weight: null                 # optional [w_real, w_fake], e.g. [1.0, 1.5]
+  scheduler:
+    factor: 0.5                      # LR reduction factor
+    patience: 3                      # epochs of no val_loss improvement before reducing
+    min_lr: 0.000001                 # floor for learning rate

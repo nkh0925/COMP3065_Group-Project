@@ -1,11 +1,28 @@
-# kaggle datasets download -d emineyetm/fake-news-detection-datasets
+# ============================================================
+# ISOT Fake News Detection — Python Dependencies
+# ============================================================
 
-# Kaggle数据集下载核心依赖
+# Kaggle dataset download
 kaggle>=1.6.14
-# 数据基础处理与验证依赖
+
+# Data processing
 pandas>=2.0.0
 numpy>=1.24.0
-# 环境变量管理（保护Kaggle密钥）
+
+# Environment variable management
 python-dotenv>=1.0.0
-# 基础文件操作依赖
+
+# Progress bars
 tqdm>=4.65.0
+
+# Configuration
+pyyaml>=6.0
+
+# Machine learning / dataset splitting
+scikit-learn>=1.3.0
+
+# Deep learning framework (PyTorch)
+torch>=2.0.0
+
+# (Optional) NLP utilities — reserved for potential future use
+# nltk>=3.8.0
