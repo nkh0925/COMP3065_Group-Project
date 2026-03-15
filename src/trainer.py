@@ -274,7 +274,6 @@ def train(
         factor=scheduler_factor,
         patience=scheduler_patience,
         min_lr=scheduler_min_lr,
-        verbose=True,
     )
 
     # --- Early stopping (monitors fake recall) ---
