@@ -28,19 +28,44 @@ from src.utils import load_config, set_seed
 from src.dataset import create_dataloaders
 from src.model import build_model
 from src.trainer import train
+from src.visualize import plot_training_history
 
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("training.log", mode="w", encoding="utf-8"),
-    ],
-)
-logger = logging.getLogger(__name__)
+def setup_global_logger(log_file: str = "training.log") -> logging.Logger:
+    """
+    Forcefully configure the root logger to output to both console and file.
+    This prevents the common issue where logging.basicConfig() is silently 
+    ignored if the logger was already initialized by Jupyter or another module.
+    """
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    # Clear any existing handlers to avoid duplicate log entries
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
+    # 1. File Handler
+    file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+    file_handler.setLevel(logging.INFO)
+
+    # 2. Console Handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+
+    # 3. Formatter
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+
+    return logging.getLogger(__name__)
+
+# Initialize the robust logger
+logger = setup_global_logger("training.log")
 
 
 def main():
@@ -108,6 +133,16 @@ def main():
     logger.info("Model checkpoint: checkpoints/best_model.pt")
     logger.info("Training history: checkpoints/training_history.json")
     logger.info("Training log    : training.log")
+
+    save_dir = config.get("training", {}).get("save_dir", "checkpoints")
+    history_path = os.path.join(save_dir, "training_history.json")
+    
+    logger.info("Generating training visualizations...")
+    try:
+        plot_training_history(history_json_path=history_path, save_dir=save_dir)
+        logger.info("Visualizations saved successfully in '%s'.", save_dir)
+    except Exception as e:
+        logger.error("Failed to generate visualizations: %s", str(e))
 
 
 if __name__ == "__main__":
