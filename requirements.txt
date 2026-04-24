@@ -1,7 +1,3 @@
-# ============================================================
-# ISOT Fake News Detection — Python Dependencies
-# ============================================================
-
 # Kaggle dataset download
 kaggle>=1.6.14
 
@@ -24,5 +20,5 @@ scikit-learn>=1.3.0
 # Deep learning framework (PyTorch)
 torch>=2.0.0
 
-# (Optional) NLP utilities — reserved for potential future use
-# nltk>=3.8.0
+seaborn>=0.12.0
+matplotlib>=3.7.0
