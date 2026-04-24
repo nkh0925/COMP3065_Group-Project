@@ -1,60 +1,45 @@
-"""
-main.py — Entry point for the ISOT Fake News Detection pipeline.
-
-Usage:
-    python main.py                          # train with default config
-    python main.py --config configs/config.yaml  # specify config path
-
-This script orchestrates:
-    1. Configuration loading
-    2. Random seed fixing
-    3. Data loading & preprocessing (Task 6)
-    4. Model building (Task 7)
-    5. Model training with validation & early stopping (Task 8)
-
-The **test set is NOT evaluated here** — that is reserved for Task 9.
-
-Author : COMP3065 Group
-"""
-
 import os
 import sys
 import argparse
 import logging
 
 import torch
+import numpy as np
+from torch import nn
 
 from src.utils import load_config, set_seed
 from src.dataset import create_dataloaders
 from src.model import build_model
-from src.trainer import train
-from src.visualize import plot_training_history
+from src.trainer import train, validate
+from src.visualize import generate_all_visualizations
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
+from src.matrics import (
+    compute_metrics,
+    get_classification_report,
+    compute_confusion_matrix,
+)
+
+
+# --------------------------------------------------------------------------- 
+# Logging Setup
+# --------------------------------------------------------------------------- 
 def setup_global_logger(log_file: str = "training.log") -> logging.Logger:
     """
-    Forcefully configure the root logger to output to both console and file.
-    This prevents the common issue where logging.basicConfig() is silently 
-    ignored if the logger was already initialized by Jupyter or another module.
+    Configure root logger to output to both console and file.
+    This ensures logging works even if the logger was previously initialized.
     """
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 
-    # Clear any existing handlers to avoid duplicate log entries
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
 
-    # 1. File Handler
     file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
     file_handler.setLevel(logging.INFO)
 
-    # 2. Console Handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
 
-    # 3. Formatter
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
     file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
@@ -64,14 +49,24 @@ def setup_global_logger(log_file: str = "training.log") -> logging.Logger:
 
     return logging.getLogger(__name__)
 
-# Initialize the robust logger
+
 logger = setup_global_logger("training.log")
 
 
+def log_metrics(metrics: dict, prefix: str = "") -> None:
+    """
+    Log key metrics in a consistent format.
+    """
+    logger.info("%sAccuracy      : %.4f", prefix, metrics.get("accuracy", 0))
+    logger.info("%sRecall_Fake   : %.4f", prefix, metrics.get("recall_fake", 0))
+    logger.info("%sPrecision_Fake: %.4f", prefix, metrics.get("precision_fake", 0))
+    logger.info("%sF1_Fake       : %.4f", prefix, metrics.get("f1_fake", 0))
+
+
 def main():
-    # --- CLI arguments ---
+    # --- Parse command line arguments ---
     parser = argparse.ArgumentParser(
-        description="ISOT Fake News Detection — LSTM Training Pipeline"
+        description="ISOT Fake News Detection — BiLSTM Training Pipeline"
     )
     parser.add_argument(
         "--config",
@@ -87,7 +82,7 @@ def main():
     logger.info("=" * 70)
     config = load_config(args.config)
 
-    # --- 2. Fix all random seeds ---
+    # --- 2. Fix random seeds ---
     seed = config["split"]["random_seed"]
     set_seed(seed)
 
@@ -106,10 +101,10 @@ def main():
     logger.info("Data pipeline ready. Vocab size: %d", vocab_size)
 
     # --- 5. Build model ---
-    logger.info("Building LSTM model …")
+    logger.info("Building BiLSTM model …")
     model = build_model(config, vocab_size, word2idx)
 
-    # --- 6. Train ---
+    # --- 6. Train model ---
     logger.info("Starting training …")
     results = train(
         model=model,
@@ -119,30 +114,97 @@ def main():
         device=device,
     )
 
-    # --- Summary ---
+    # --- 7. Evaluate on Test Set ---
+    logger.info("=" * 70)
+    logger.info("  Starting Test Set Evaluation (using best model)")
+    logger.info("=" * 70)
+
+    model.eval()
+    criterion = nn.CrossEntropyLoss()
+
+    logger.info("Running inference on test set …")
+    test_loss, test_labels, test_preds = validate(
+        model=model,
+        loader=test_loader,
+        criterion=criterion,
+        device=device
+    )
+
+    # Compute evaluation metrics
+    test_metrics = compute_metrics(test_labels, test_preds)
+    test_report = get_classification_report(test_labels, test_preds)
+    test_cm = compute_confusion_matrix(test_labels, test_preds)
+
+    logger.info("Test Classification Report:\n%s", test_report)
+    logger.info("Test Confusion Matrix (rows=actual, cols=predicted):\n%s", test_cm)
+
+    logger.info("-" * 70)
+    logger.info("Test Set Final Metrics:")
+    log_metrics(test_metrics, prefix="  ")
+
+    # Save test predictions & labels
+    save_dir = config.get("training", {}).get("save_dir", "checkpoints")
+    np.save(os.path.join(save_dir, "test_labels.npy"), test_labels)
+    np.save(os.path.join(save_dir, "test_preds.npy"), test_preds)
+    logger.info("Test labels and predictions saved to checkpoints/")
+
+    # --- Final Summary ---
     best = results["best_metrics"]
     logger.info("=" * 70)
-    logger.info("  TRAINING COMPLETE")
-    logger.info("  Best epoch : %d", results["best_epoch"])
-    logger.info("  Recall_Fake: %.4f  (★ primary metric)", best.get("recall_fake", 0))
-    logger.info("  F1_Fake    : %.4f", best.get("f1_fake", 0))
-    logger.info("  Precision_F: %.4f", best.get("precision_fake", 0))
-    logger.info("  Accuracy   : %.4f", best.get("accuracy", 0))
-    logger.info("  Val Loss   : %.4f", best.get("val_loss", 0))
+    logger.info("  TRAINING & EVALUATION COMPLETE")
+    logger.info("  Best epoch              : %d", results["best_epoch"])
+    logger.info("  Best Val Recall_Fake    : %.4f  (★ primary metric)", best.get("recall_fake", 0))
+    logger.info("  Best Val F1_Fake        : %.4f", best.get("f1_fake", 0))
+    logger.info("  Best Val Precision_Fake : %.4f", best.get("precision_fake", 0))
+    logger.info("  Best Val Accuracy       : %.4f", best.get("accuracy", 0))
+    logger.info("  Best Val Loss           : %.4f", best.get("val_loss", 0))
+    logger.info("-" * 70)
+    logger.info("  Test Recall_Fake        : %.4f", test_metrics.get("recall_fake", 0))
+    logger.info("  Test F1_Fake            : %.4f", test_metrics.get("f1_fake", 0))
+    logger.info("  Test Precision_Fake     : %.4f", test_metrics.get("precision_fake", 0))
+    logger.info("  Test Accuracy           : %.4f", test_metrics.get("accuracy", 0))
     logger.info("=" * 70)
-    logger.info("Model checkpoint: checkpoints/best_model.pt")
-    logger.info("Training history: checkpoints/training_history.json")
-    logger.info("Training log    : training.log")
 
-    save_dir = config.get("training", {}).get("save_dir", "checkpoints")
+    logger.info("Model checkpoint      : checkpoints/best_model.pt")
+    logger.info("Training history      : checkpoints/training_history.json")
+    logger.info("Training log          : training.log")
+
+    # ====================== Visualizations ======================
     history_path = os.path.join(save_dir, "training_history.json")
-    
-    logger.info("Generating training visualizations...")
+    logger.info("Generating all visualizations (including Radar Chart)...")
+
     try:
-        plot_training_history(history_json_path=history_path, save_dir=save_dir)
-        logger.info("Visualizations saved successfully in '%s'.", save_dir)
+        # Validate on validation set to get labels & predictions
+        val_loss, val_labels, val_preds = validate(
+            model=model,
+            loader=val_loader,
+            criterion=criterion,
+            device=device
+        )
+        val_metrics = compute_metrics(val_labels, val_preds)
+
+        # Generate all visualizations (Loss, Combined, Confusion, Bar, Radar)
+        generate_all_visualizations(
+            history_json_path=history_path,
+            val_labels=val_labels,
+            val_preds=val_preds,
+            test_labels=test_labels,
+            test_preds=test_preds,
+            val_metrics=val_metrics,
+            test_metrics=test_metrics,
+            save_dir=save_dir
+        )
+        logger.info("✅ All visualizations generated successfully in '%s'.", save_dir)
+
     except Exception as e:
         logger.error("Failed to generate visualizations: %s", str(e))
+        try:
+            from src.visualize import plot_training_history
+            plot_training_history(history_json_path=history_path, save_dir=save_dir)
+        except Exception as fallback_e:
+            logger.error("Fallback visualization also failed: %s", str(fallback_e))
+
+    logger.info("Pipeline completed successfully.")
 
 
 if __name__ == "__main__":

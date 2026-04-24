@@ -1,488 +1,282 @@
-# COMP3065_Group-Project
-# Groupm member:
-Hung Kiu Shan (22230807)
-Hung Kwan Hang
+# Reproducing the Experiments and Figures
 
-# Question：
+## 1. Overview
 
-Fake News Detection with Deep Neural Networks: In this project, you are required to design, implement, and evaluate your neural networks to perform fake news detection on a real-world dataset.
-Dataset: ISOT Fake News Dataset. (https://www.kaggle.com/datasets/emineyetm/fake-news-detection-datasets )
-i.	Neural Networks: In this project, you can freely choose the neural network architectures that you want to use, such as RNN-based networks (LSTM or GRU), Transformer-based networks, or more advanced neural networks. They are all sequence-based models to encode text data.
-ii.	Performance Evaluation: In this project, you are required to evaluate the performance of your trained neural network from multiple perspectives, rather than relying on accuracy alone. Generally, misclassifying fake news articles as truthful news can lead to significant consequences. You should explain how your chosen evaluation metrics reflect this consideration and justify your performance analysis in the project report
-Reference: https://docs.pytorch.org/docs/stable/generated/torch.nn.Transformer.html https://docs.pytorch.org/docs/stable/generated/torch.nn.LSTM.html https://arxiv.org/abs/1902.06673
-=============================
+This repository implements a fake news detection system based on a **2-layer Bidirectional LSTM (Bi-LSTM)** with **300-dimensional GloVe embeddings** on the **ISOT Fake News Dataset**. This document explains how to reproduce the full experimental pipeline, including dataset download, training, saved artifacts, and the figures used in the report.
 
+The main reproduction path used for this project is:
 
-# 文件結構：
-===
-ISOT_FakeNews_Detection/
-├── data/                        # 存放原始数据
-│   ├── raw/                     # 存放 True.csv, Fake.csv (Task 1)
-│   ├── processed/               # 存放清洗后的缓存数据
-│   └── glove/                   # 存放 GloVe 预训练向量 (Task 3)
-├── configs/                     # 配置文件
-│   └── config.yaml              # 超参数、路径配置
-├── src/                         # 源代码目录
-│   ├── __init__.py
-│   ├── dataset.py               # 数据加载与预处理 (对应 Task 1 特性)
-│   ├── model.py                 # LSTM 模型定义 (对应 Task 3 架构)
-│   ├── trainer.py               # 训练与验证循环逻辑
-│   ├── metrics.py               # 评估指标计算 (对应 Task 2 标准)
-│   └── utils.py                 # 通用工具 (文本清洗、随机种子固定)
-├── main.py                      # 项目入口脚本
-├── requirements.txt             # 依赖清单
-└── README.md                    # 项目说明
-==========================================================
+1. install dependencies,
+2. configure Kaggle credentials,
+3. download the dataset,
+4. run `run_project.ipynb` from top to bottom,
+5. inspect the outputs in the `checkpoints/` directory.
 
-文件名	              职责描述	                                        输入/依赖	                                   输出
-configs/config.yaml	 集中管理超参数（LR, BatchSize, HiddenDim等）。	      无	                        配置字典
-src/dataset.py	     实现自定义 Dataset 类，处理文本截断、补齐、Token化。	原始 CSV, GloVe 词表	Tensor 格式的 Input IDs, Labels
-src/model.py	     实现 BiLSTM 架构，包含 Embedding, Dropout, LSTM, Pooling, FC。	Input IDs Tensor	Logits / Probabilities
-src/metrics.py	     实现召回率、特异性、F1、AUC 等指标计算函数。	  真实标签, 预测概率	浮点数指标字典
-src/trainer.py	     封装训练与验证的 Epoch 循环，集成 Loss 计算与反向传播。	DataLoader, Model, Optimizer	训练日志, 保存的模型权重
-main.py	串联全流程：加载配置 -> 准备数据 -> 初始化模型 -> 执行训练/推理。	命令行参数	最终评估报告
+---
 
+## 2. Repository Structure
 
+```text
+COMP3065_Group-Project/
+├── configs/
+│   └── config.yaml
+├── data/
+│   ├── raw/
+│   ├── processed/
+│   └── glove/
+├── src/
+│   ├── dataset.py
+│   ├── matrics.py
+│   ├── model.py
+│   ├── trainer.py
+│   ├── utils.py
+│   └── visualize.py
+├── checkpoints/
+├── download_dataset.py
+├── main.py
+├── requirements.txt
+├── run_project.ipynb
+└── training.log
+```
 
+---
 
+## 3. Environment Setup
 
+### 3.1 Python and package requirements
 
-# 审查
-===
-# 【系统提示・强批判型项目监督管理员（精简硬约束版）】
+Install the required Python packages listed in `requirements.txt`.
 
-本提示为**系统级强制规则**，你必须 100% 严格执行，无任何例外，不得擅自修改、弱化任何条款。
-
-## 一、你的唯一身份与核心使命
-
-你是**强批判型项目监督管理员**，是项目质量的终极守门人，绝非迎合用户的助手、支持者、鼓励者。你的唯一使命：以零容忍、不留情面的严苛视角，全维度审查用户提交的所有项目计划、执行步骤、已落地内容，揪出所有逻辑漏洞、认知错误、风险隐患、落地缺陷，确保项目 100% 逻辑严谨、可行可控、无硬伤、高质量。
-
-## 二、不可突破的核心铁则
-
-1. **绝对不盲从、不讨好**：你的判断唯一依据是客观事实、逻辑自洽性、落地可行性、风险可控性，与用户的主观意愿无关，永远不得默认 “用户说的就是对的”。
-2. **强制批判式审查，零放水**：只要发现以下问题，必须直接指出，不委婉、不回避、不弱化：逻辑矛盾 / 前提虚假、步骤缺失 / 顺序混乱、假设无依据、风险被忽略、落地性不足、目标模糊、表述歧义、违背客观常识。
-3. **刚性审查底线**：必须确保项目无逻辑硬伤、无认知错误、无虚假前提，所有结论必须有可验证的依据，底线不达标绝不放行。
-4. **问题与建议强绑定**：每指出一个问题，必须同步说明错误根源、具体影响、可落地的修正方案 / 优化建议，禁止只挑错不给解法。
-5. **明确决策规则**：
-    - 方案优质严谨、无硬伤、可落地：明确给出【通过】，同步通过依据；
-    - 存在非原则性小问题：明确标注【需修正】，列清问题与修改要求，修正后再审；
-    - 存在严重逻辑错误、前提虚假、不可行、高风险：直接给出【需重做】结论，明确说明重做原因，绝不放水放行。
-6. **权责边界红线**：你仅负责审查、批判、挑错、提优化建议、出具放行 / 驳回结论，**绝不替用户执行项目内容、撰写方案**。
-
-## 三、工具权限与安全合规红线
-
-1. 你可自主调用所有可用工具（全网搜索、事实核查、数据计算、专业验证等），所有判断必须基于真实、可溯源、公开合规的信息。
-2. 遇以下情况，必须**立即终止审查、停止回答**，明确向用户汇报情况，等待用户补充资料 / 进一步解释后再继续：
-    - 项目核心信息不足、关键细节缺失；
-    - 关键事实无法通过公开合规渠道验证；
-    - 涉及你无法确认的专业内容、不确定信息；
-3. 绝对禁止虚构信息、主观猜测、编造依据、产生幻觉，不确定 = 不通过，绝不随意出具结论。
-
-## 四、固定输出格式（必须严格遵守）
-
-每次回复必须按以下固定结构输出，不得调整顺序、遗漏模块：
-
-1. 【最终审查结论】：通过 / 需修正 / 需重做
-2. 【核心问题清单】：逐条列清所有发现的错误、漏洞、缺陷
-3. 【潜在风险预警】：明确标注方案落地后可能出现的隐患、次生问题
-4. 【可落地优化建议】：逐条对应问题，给出具体、可执行的修正 / 重做方案
-5. 【信息补充要求】：明确说明是否需要用户补充资料、解释细节，如需，列清具体需求
-6. 【放行意见】：明确说明当前方案是否可进入下一阶段，或需完成修正 / 重做后再审
-
-## 五、生效指令
-
-从本提示生效起，你将严格执行以上所有规则，等待用户提交项目相关内容，启动审查。
-
-===
-
-
-
-
-# Task 1
-=======================================================
-Fake New dataset information:
-1. 数据集定位与用途
-这是一个专门用于假新闻检测的标注数据集，包含真实新闻与假新闻两类样本，可直接用于训练和评估 AI 模型的新闻真实性识别能力。
-2. 数据来源与构成
-真实新闻：全部采集自权威媒体 Reuters.com，确保内容真实可靠。
-假新闻：来自被 Politifact（美国事实核查机构）和维基百科标记为不可信的网站，保留了原始假新闻的文本瑕疵（如标点错误、内容谬误）。
-文件结构：由两个 CSV 文件组成，True.csv（真实新闻）和Fake.csv（假新闻），样本数量分别约为 21,417 篇和 23,481 篇，类别分布相对均衡。
-3. 核心字段
-每条新闻记录包含 4 个关键字段：
-title：新闻标题，真实新闻有 20,826 个唯一标题，假新闻有 17,903 个唯一标题。
-text：新闻正文，真实新闻正文无空值（21,192 个唯一值），假新闻中有 3% 的正文为空。
-subject：新闻主题，用于分类话题。
-date：发布日期，记录时间戳。
-4. 主题与时间分布
-真实新闻：主题高度集中，仅包含politicsNews（约 53%）和worldnews（约 47%）两类，时间范围为 2016 年 1 月至 2017 年 12 月。
-假新闻：主题更为多样，主要包括News（约 39%）、politics（约 29%）、left-news等，时间跨度从 2015 年 3 月至 2018 年 2 月。
-5. 数据处理特点
-数据经过基础清洗，但假新闻的原始文本特征（如标点错误、语法问题）被刻意保留，以还原其真实语言模式，便于 AI 模型学习假新闻的独特表达风格。
-=======================================================
-
-
-# Task 2
-=======================================================
-# 假新闻检测模型评估指标体系方案
-## 1. 标签明确定义
-正类（标签 1）：假新闻（Fake News），即被事实核查机构或权威来源标记为不可信的新闻。
-负类（标签 0）：真实新闻（True News），即来自权威媒体、内容真实可靠的新闻。
-
-## 2. 混淆矩阵业务定义
-| 混淆矩阵元素 | 业务定义 | 风险等级 |
-|------------|----------|----------|
-| 真阳性（TP） | 假新闻被正确识别为假新闻 | 无风险 |
-| 真阴性（TN） | 真实新闻被正确识别为真实新闻 | 无风险 |
-| 假阳性（FP） | 真实新闻被误判为假新闻（误报） | 低风险（影响信息传播效率） |
-| 假阴性（FN） | 假新闻被误判为真实新闻（漏报） | 极高风险（核心管控对象，可能导致虚假信息扩散） |
-
-## 3. 核心评估指标集
-按优先级从高到低排序：
-### 3.1 假新闻召回率（Recall / Sensitivity）
-计算逻辑：Recall=TP+FNTP​
-优先级：第一优先级（一票否决项）
-适用场景：核心评估指标，衡量模型捕捉所有假新闻的能力，直接反映 “降低假新闻漏判风险” 的业务目标。
-
-### 3.2 特异性（Specificity）
-计算逻辑：Specificity=TN+FPTN​
-优先级：第二优先级
-适用场景：辅助评估指标，衡量模型正确识别真实新闻的能力，避免过度误报影响正常信息传播。
-
-### 3.3 F1 分数（F1-Score）
-计算逻辑：F1=2×Precision+RecallPrecision×Recall​，其中 Precision=TP+FPTP​
-优先级：第三优先级
-适用场景：平衡指标，综合衡量模型在 “准确识别假新闻” 和 “不误判真实新闻” 之间的平衡能力。
-
-### 3.4 AUC-ROC
-计算逻辑：受试者工作特征曲线下面积，衡量模型在不同分类阈值下区分正类和负类的整体能力。
-优先级：第四优先级
-适用场景：整体性能评估，反映模型对新闻真实性的整体判别能力。
-
-### 3.5 AUC-PR
-计算逻辑：精确率 - 召回率曲线下面积，更关注正类（假新闻）的分类性能。
-优先级：第五优先级
-适用场景：正类性能聚焦评估，尤其适合验证模型在假新闻识别上的综合表现。
-
-## 4. 指标选择合理性说明
-假新闻召回率优先：直接针对 “假新闻误判为真实新闻会带来严重后果” 的核心要求，通过最大化召回率将漏报风险降至最低。
-特异性辅助：在优先保证召回率的前提下，避免模型为了抓假新闻而过度误判真实新闻，平衡信息安全与传播效率。
-F1 分数、AUC-ROC、AUC-PR 补充：从不同维度全面评估模型性能，确保模型不仅能有效管控风险，还具备稳定的整体分类能力。
-
-## 5. 模型性能验收标准
-| 评估指标 | 最低验收阈值 | 验收规则 |
-|-------------|--------------|----------|
-| 假新闻召回率  | ≥ 0.95 | 一票否决，未达此阈值直接判定模型不合格 |
-| 特异性       | ≥ 0.85 | 需同时满足 |
-| F1 分数      | ≥ 0.90 | 需同时满足 |
-| AUC-ROC     | ≥ 0.95 | 需同时满足 |
-| AUC-PR      | ≥ 0.95 | 需同时满足 |
-
-=======================================================
-
-
-
-# Task 3
-=======================================================
-Task3 基于 PyTorch LSTM 的假新闻检测模型架构设计文档
-1. 文档概述
-1.1 设计目标
-基于 PyTorch 官方 nn.LSTM 模块设计端到端二分类假新闻检测模型，100% 适配 ISOT 假新闻数据集特性，严格对齐 Task2 评估指标体系，以假新闻召回率≥0.95 为一票否决核心目标，同时保障特异性≥0.85 等验收阈值，平衡模型泛化能力与计算效率。本文档为代码实现唯一依据，无模糊表述，可直接落地开发。
-1.2 参考依据
-Task1 ISOT 假新闻数据集调研分析报告
-Task2 假新闻检测模型评估指标体系方案
-PyTorch nn.LSTM 官方技术文档
-项目假新闻检测原始任务要求
-arXiv:1902.06673 假新闻检测相关研究
-1.3 标签与业务规则对齐
-严格遵循 Task2 定义，无自定义修改：
-正类（标签 1）：假新闻，漏报（FN）为极高业务风险，核心管控对象
-负类（标签 0）：真实新闻，误报（FP）为低风险
-核心设计原则：所有架构、参数、损失函数、推理逻辑优先服务于「假新闻召回率≥0.95」的一票否决验收标准，同时满足 Task2 规定的其余指标最低阈值。
-1.4 架构选型论证
-结合 ISOT 数据集特性、任务核心目标、计算效率、落地难度四个维度，完成多架构对比选型：
-双向 LSTM vs GRU：LSTM 通过输入门、遗忘门、细胞门、输出门的完整结构，比 GRU 具备更强的长序列长期记忆能力，更适配新闻文本跨段落的逻辑矛盾、前后不一致等假新闻核心特征的捕捉；GRU 参数量更小，但长序列特征表达能力弱于 LSTM，不符合本任务优先保障召回率的核心目标。
-双向 LSTM vs Transformer：Transformer 通过自注意力机制可捕捉全局长距离依赖，理论性能上限更高，但参数量大、训练算力要求高、易过拟合于 ISOT 数据集的有限样本；双向 LSTM 作为轻量级时序模型，训练收敛快、泛化性更稳定，更适合作为本项目的基线架构，可完全满足 Task2 的所有验收指标，后续可基于此基线拓展 Transformer 对比实验。
-最终选型结论：采用 2 层堆叠双向 LSTM 作为核心编码模块，兼顾长文本特征捕捉能力、泛化稳定性与落地效率，完全匹配任务要求的序列式文本编码需求。
-2. 模型整体架构设计
-2.1 架构总览
-端到端全链路架构：文本预处理与输入层 → 词嵌入层 → 嵌入层 Dropout → 双向 LSTM 编码层 → 序列加权池化层 → 全连接特征层 → 全连接层 Dropout → Sigmoid 分类输出层
-2.2 架构核心逻辑
-以新闻标题 + 正文文本为输入，先完成标准化预处理与空值适配，经词嵌入映射为稠密向量后，通过双向 LSTM 完成上下文时序特征提取，再经池化层聚合全序列关键语义特征，最终通过全连接层与 Sigmoid 激活输出假新闻概率，完成二分类判别。全链路设计优先保障假新闻关键特征的提取与召回，同时平衡真实新闻的识别准确性。
-3. 各层级详细设计说明
-3.1 文本预处理与输入层（核心适配 Task1 数据集特性）
-核心作用：完成原始文本的标准化处理、空值适配、token 化与定长序列生成，解决 Task1 中发现的假新闻正文空值、标题正文语义权重差异问题，为模型提供符合规范的输入。
-输入内容：单条新闻的 title（标题）、text（正文）字段原始文本
-核心处理规则：
-空值处理：若正文 text 为空，仅使用标题 title 作为输入文本；若标题 title 为空，使用正文前 128 个 token 作为输入文本；若两者均为空，标记为无效样本，训练 / 推理阶段均剔除。
-文本拼接：标题与正文非空时，保留标题完整内容，正文取前 384 个 token，拼接格式为 [TITLE] + 标题文本 + [TEXT] + 正文文本，通过特殊标记区分标题与正文。
-定长序列：固定序列总长度 L=512，超出部分截断、不足部分补 0（padding_idx=0），覆盖 ISOT 数据集 99% 新闻的标题 + 正文有效长度。
-核心参数：
-固定序列长度 L：512（固定值）
-批大小 N：训练阶段固定 32，验证 / 推理阶段可调整为 64/128
-词表大小：40000（固定值，覆盖 ISOT 数据集 99% 高频词汇）
-3.2 词嵌入层（Embedding Layer）
-核心作用：将离散 token 索引映射为低维稠密连续向量，为双向 LSTM 层提供标准化时序输入特征。
-核心参数：
-num_embeddings：40000（固定值，过滤低频噪声词，降低参数量）
-embedding_dim：256（固定值，对应 LSTM 的 input_size，平衡特征表达与计算开销，兼容 GloVe 预训练词向量）
-padding_idx：0（固定值，填充位向量不参与梯度更新）
-初始化方案：
-基线方案：与 PyTorch nn.LSTM 默认初始化保持一致，采用均匀分布 U (-√k, √k) 初始化，k=1/embedding_dim
-优化方案：支持加载 GloVe 6B 预训练词向量初始化，冻结前 3 轮训练后开启微调，提升语义特征表达能力
-3.3 嵌入层 Dropout 层
-核心作用：对嵌入输出特征进行随机失活，缓解输入层过拟合风险，同时不破坏文本时序结构与语义完整性。
-核心参数：dropout 概率 0.2（固定值，轻量级失活，避免过度破坏语义特征）
-3.4 双向 LSTM 编码层（核心模块，100% 对齐 PyTorch 官方文档）
-核心作用：基于 PyTorch 原生 nn.LSTM 实现双向时序编码，捕捉新闻文本正 / 反向上下文语义、语序特征，以及假新闻特有的语言模式、逻辑矛盾特征，为分类任务提供核心判别特征。
-层级结构：2 层堆叠双向 LSTM，第 l≥2 层的输入为上一层的隐藏状态输出，中间层输出经内置 dropout 完成正则化处理。
-核心计算逻辑：对每个时间步 t，依次计算输入门、遗忘门、细胞门、输出门，更新细胞状态与隐藏状态（公式与 PyTorch 官方完全一致）；双向模式下同时执行正 / 反向序列计算，拼接双向隐藏状态作为输出。
-核心适配设计：对 [TITLE] 标记后的标题 token 序列，在 LSTM 编码时赋予 1.5 倍特征权重，强化标题中误导性信息的捕捉。
-3.5 序列加权池化层
-核心作用：聚合双向 LSTM 输出的全时间步序列特征，转换为固定维度的句子级语义向量，避免长序列尾部信息丢失，同时强化假新闻关键判别特征的权重。
-设计方案：均值池化 + 最大池化双分支拼接
-均值池化：对全时间步隐藏状态取均值，捕捉新闻文本整体语义特征，输出维度为 (N, D*H_out)
-最大池化：对全时间步隐藏状态取最大值，捕捉假新闻的关键显著性特征（极端词汇、错误表述等），输出维度为 (N, D*H_out)
-特征拼接：将两个池化分支的输出沿特征维度拼接，最终输出维度为 2DH_out（D=2 为双向模式，H_out 为 LSTM 隐藏状态维度）
-3.6 全连接特征层
-核心作用：将池化层输出的高维聚合特征，映射到低维分类特征空间，学习假新闻检测的高阶非线性特征。
-核心参数：
-输入维度：1024（固定值，对应双向 LSTM hidden_size=256 时，2DH_out=1024）
-输出维度：128（固定值，平衡特征拟合能力与过拟合风险）
-激活函数：ReLU（固定值，引入非线性变换，提升模型拟合能力）
-3.7 全连接层 Dropout 层
-核心作用：对全连接层输出特征进行随机失活，抑制高维特征的过拟合风险（全连接层参数量集中，过拟合风险高于时序层）。
-核心参数：dropout 概率 0.3（固定值，强于嵌入层 dropout，适配高参数量的正则化需求）
-3.8 分类输出层
-核心作用：将高阶分类特征映射为二分类概率，完成假新闻与真实新闻的最终判别，逻辑设计优先保障假新闻召回率。
-核心参数：
-输入维度：128（固定值，与全连接特征层输出维度一致）
-输出维度：1（固定值，输出单值为假新闻的预测概率）
-激活函数：Sigmoid（固定值，将输出映射至 [0,1] 概率区间）
-分类阈值规则：
-基线阈值：0.5
-优化规则：在验证集上遍历 0.3~0.7 区间的阈值，优先选择满足假新闻召回率≥0.95 的前提下，特异性最高的阈值；禁止为提升召回率无下限下调阈值导致特异性低于 0.85。
-4. LSTM 核心参数设计逻辑（100% 对齐 PyTorch 官方文档）
-所有参数完全遵循 PyTorch 官方 nn.LSTM 模块定义，结合 ISOT 数据集与任务核心目标做定制化适配：
-input_size：256，与词嵌入层 embedding_dim 完全一致，匹配 LSTM 输入特征维度要求
-hidden_size：256，决定时序特征表达能力，平衡模型容量与过拟合风险
-num_layers：2，2 层堆叠结构可捕捉深层语义特征，3 层及以上易出现过拟合与梯度消失
-bias：True，启用偏置项，提升模型拟合能力
-batch_first：True，输入输出张量格式为 (batch, seq_len, feature)，符合批处理开发习惯
-dropout：0.2，多层 LSTM 中除最后一层外的所有层输出均执行 dropout 失活
-bidirectional：True，启用双向 LSTM，同时捕捉正向与反向上下文语义
-proj_size：0，不启用投影层，保持隐藏状态维度稳定
-device/dtype：自适应运行环境，训练时优先适配 GPU，推理时兼容 CPU/GPU
-4.1 可学习参数说明
-基础参数：weight_ih_l [k]、weight_hh_l [k]、bias_ih_l [k]、bias_hh_l [k]（k 为层序号，0≤k<num_layers）
-双向扩展参数：开启 bidirectional=True 时，新增带 _reverse 后缀的对应权重与偏置参数
-投影层参数：启用 proj_size>0 时，新增 weight_hr_l [k] 投影权重参数
-5. 损失函数选择与业务适配说明
-围绕「优先降低假新闻漏报风险」的核心目标，结合 ISOT 数据集正负样本比例（真实新闻：假新闻≈1:1.1，类别均衡），设计三级递进式方案：
-5.1 基线方案：二元交叉熵损失（BCELoss）
-适用场景：基线模型快速验证，完成模型收敛性与基础性能测试
-公式：Loss = -1/N * Σ[yi・log (pi) + (1-yi)・log (1-pi)]（yi 为真实标签，pi 为假新闻预测概率）
-适配性：完全适配均衡类别分布，可通过调整分类阈值快速验证召回率优化空间。
-5.2 推荐上线方案：带权重的二元交叉熵损失（Weighted BCELoss）
-适用场景：正式训练与业务上线模型，核心目标为最大化假新闻召回率
-公式：Loss = -1/N * Σ[α・yi・log (pi) + (1-α)・(1-yi)・log (1-pi)]
-权重设计逻辑：
-α 默认值：2.0（取值范围 1.5~3.0）
-适配说明：结合 1:1.1 的样本比例，将假新闻漏报惩罚权重设为真实新闻误报的 2 倍；若召回率未达标，可上调 α 至 2.5~3.0；若特异性低于 0.85，可下调 α 至 1.5~2.0。
-5.3 优化迭代方案：Focal Loss
-适用场景：模型迭代优化，重点提升难分假新闻的识别能力
-核心逻辑：聚焦参数 γ 默认 2.0，降低易分样本损失权重，将训练重心聚焦于难分样本；配合平衡参数 α（默认 0.65），进一步强化假新闻样本损失贡献。
-6. 防过拟合机制设计
-针对 ISOT 数据集 4 万 + 样本规模，设计全链路多层级防过拟合机制：
-6.1 全链路 Dropout 正则化
-嵌入层后：dropout 概率 0.2，缓解输入特征过拟合
-LSTM 内置：dropout 概率 0.2，缓解深层网络过拟合
-全连接层后：dropout 概率 0.3，抑制高维特征过拟合
-6.2 L2 正则化（权重衰减）
-核心作用：限制权重参数取值范围，避免过拟合
-核心参数：weight_decay 默认值 1e-4（取值范围 1e-5~1e-4），生效范围为 Embedding 层、双向 LSTM 层、全连接层的所有权重参数（偏置不参与）。
-6.3 早停机制（Early Stopping）
-核心作用：避免训练集过拟合，保留泛化能力最优的权重
-核心规则：
-监控指标优先级：① 验证集假新闻召回率；② 验证集特异性；③ 验证集 F1 分数
-耐心值：5 轮（若召回率连续 5 轮无提升，或召回率达标但特异性连续 3 轮低于 0.85，则终止训练）
-权重保存：仅保存满足召回率≥0.95 且特异性≥0.85 的前提下，F1 分数最高的权重。
-6.4 输入数据降噪
-词表截断：仅保留词频前 40000 的高频词汇，过滤低频噪声词
-无效样本剔除：训练前剔除标题与正文均为空的无效样本
-序列长度限制：固定最大序列长度 512，过滤冗余无效文本
-6.5 可选文本数据增强（仅训练集使用）
-适用场景：训练集泛化能力不足时启用，不修改样本标签：
-同义词替换：使用 WordNet 对 10% 的名词、动词进行同义词替换，不替换否定词、极端词汇
-随机删除：随机删除 5% 的低信息量停用词，不删除实词
-句子重排：对正文 20% 的句子进行随机重排，仅适用于正文段落
-7. 模型前向传播全流程逻辑
-严格按照 batch_first=True 格式定义，全流程张量形状可追溯：
-输入接收：接收 input_ids（形状 (N, L)，N = 批大小，L=512），可选 h0/c0（未提供时初始化为全 0 张量）
-词嵌入映射：input_ids 输入 Embedding 层，输出形状 (N, L, 256)
-嵌入层 Dropout：对嵌入张量失活，形状保持 (N, L, 256)
-双向 LSTM 编码：输出 output（形状 (N, L, 512)）、h_n（形状 (4, N, 256)）、c_n（形状 (4, N, 256)）
-序列池化聚合：
-均值池化：输出 (N, 512)
-最大池化：输出 (N, 512)
-特征拼接：输出 (N, 1024)
-全连接特征映射：经 ReLU 激活，输出 (N, 128)
-全连接层 Dropout：对特征失活，形状保持 (N, 128)
-分类概率输出：经 Sigmoid 激活，输出 (N, 1) 假新闻概率
-推理分类：按优选阈值转换为标签（≥阈值 = 假新闻 / 标签 1，< 阈值 = 真实新闻 / 标签 0）
-8. 模型输入输出格式定义
-8.1 输入格式（batch_first=True，固定启用）
-input_ids：形状 (N, L)，必填，批处理后的 token 序列（N = 批大小，L=512）
-h0：形状 (D*num_layers, N, H_out)，可选，默认全 0 张量（D=2，num_layers=2，H_out=256）
-c0：形状 (D*num_layers, N, H_cell)，可选，默认全 0 张量（D=2，num_layers=2，H_cell=256）
-补充说明：若 batch_first=False，input_ids 形状为 (L, N)，支持 torch.nn.utils.rnn.PackedSequence 变长输入。
-8.2 输出格式
-8.2.1 训练阶段
-pred_probs：形状 (N, 1)，假新闻预测概率，值域 [0,1]，用于损失计算
-lstm_output：形状 (N, L, D*H_out)，双向 LSTM 全时间步隐藏状态，用于特征分析
-(h_n, c_n)：形状 (4, N, 256) / (4, N, 256)，最终隐藏 / 细胞状态，用于增量推理
-8.2.2 推理阶段
-pred_probs：形状 (N, 1)，假新闻预测概率，值域 [0,1]
-pred_labels：形状 (N, 1)，二分类标签（1 = 假新闻，0 = 真实新闻）
-9. 模型设计适配性说明
-9.1 ISOT 数据集特性适配
-针对假新闻 3% 正文空值，设计完整空值处理规则
-针对标题高信息量特性，设计标题特征加权机制
-针对 1:1.1 均衡类别分布，设计匹配的损失函数权重
-针对新闻文本长度分布，固定序列长度 512，覆盖 99% 有效文本
-9.2 假新闻检测任务与评估指标适配
-最大池化强化假新闻关键判别特征捕捉
-损失函数、分类阈值、早停机制严格对齐 Task2 指标优先级
-双向 LSTM 上下文编码能力有效捕捉假新闻逻辑矛盾、语序异常
-端到端架构完全适配二分类标注规则
-9.3 工程实现与任务要求适配
-基于 PyTorch 原生算子实现，无自定义算子，兼容性强
-batch_first=True 符合批处理开发习惯
-所有参数提供固定默认值与取值范围，适配全流程开发
-符合序列式文本编码模型要求，预留 Transformer 对比拓展空间
-参考 arXiv:1902.06673，明确内容 - based 方法定位，后续可拓展融合传播特征
-10. 文档自检说明
-内容完全遵循项目任务要求，仅完成模型架构设计，未编写代码、未执行训练调优、未修改预处理流程、未调整评估指标体系，无越界内容
-所有 LSTM 参数、计算逻辑、输入输出格式 100% 对齐 PyTorch 官方 nn.LSTM 技术文档，无技术错误
-设计完全结合 Task1 ISOT 数据集特性、Task2 评估指标体系要求，核心目标明确，无模糊表述
-架构设计覆盖从输入到输出的全链路，包含参数设计、损失函数、防过拟合机制、前向传播逻辑、输入输出规范，完全满足代码实现依据要求
-全链路设计全程优先保障假新闻召回率，严格匹配 Task2 二分类任务核心业务要求与风险等级规则
-补充完整架构选型对比论证，明确双向 LSTM 选型合理性与依据，无逻辑漏洞
-=======================================================
-
-
-
-
-
-# Task 5
-=======================================================
-《文本数据预处理方案与数据集处理说明文档》
-1.1 数据集划分规则 (Dataset Splitting)
-为确保模型评估的客观性及 Task 2 评估指标的有效计算，必须在所有清洗和拟合操作前完成数据集划分。
-划分策略：分层随机抽样 (Stratified Random Split)。
-分层依据：基于标签（Label）进行分层，确保训练集、验证集、测试集中“真实新闻”与“假新闻”的比例与原始数据集保持一致（约 1:1.1）。
-划分比例：
-训练集 (Training Set)：70% —— 用于构建词表、拟合参数及模型训练。
-验证集 (Validation Set)：15% —— 用于 Task 3 定义的早停机制 (Early Stopping) 监控及超参数选择。
-测试集 (Test Set)：15% —— 用于 Task 2 最终指标验收（严禁用于训练或调优）。
-随机种子 (Random Seed)：固定为 42，保证每次划分结果可复现。
-1.2 预处理全流程步骤与逻辑
-针对 Task 3 提出的 LSTM 输入要求及 Task 1 发现的数据特征，设计如下流水线：
-步骤一：数据清洗与标准化 (Text Cleaning)
-空值/无效样本清洗：
-若 title 和 text 均为空/NaN，直接剔除该样本（根据 Task 3 规则）。
-若仅 text 为空，保留样本，后续填充逻辑见步骤二。
-文本标准化：
-HTML 实体去除：将 &amp; 转为 &，去除 <br> 等 HTML 标签（来源于爬虫残留）。
-URL 移除：使用正则替换 http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+ 为空字符，去除无关链接。
-特殊字符处理：保留英文标点符号（Task 1 强调假新闻标点特征），但去除不可见字符（如 \n, \t 统一转为空格）。
-大小写转换：统一转换为小写 (Lowercase)。
-理由：虽然 Task 1 提到大写是特征，但 Task 3 限制词表为 40,000。不转小写会导致“Fake”和“fake”占用两个词位，导致有效词汇量被稀释。折中方案是转小写，依赖 LSTM 捕捉语序和用词夸张程度。
-步骤二：特定文本构造 (Text Construction)
-严格执行 Task 3 定义的输入格式：[TITLE] + title + [TEXT] + text。
-空值填补策略：
-text 字段为空：cleaned_text = 空字符串。
-title 字段为空：cleaned_title = 空字符串（但 Task 3 逻辑中若 title 为空需取 text 前段，此逻辑将在代码实现中动态处理）。
-特殊标记插入：
-引入两个特殊 Token：[TITLE] 和 [TEXT]。
-这两个 Token 必须加入词表，且不能被停用词表过滤。
-步骤三：分词与去停用词 (Tokenization & Stopwords)
-分词器：使用标准英语分词器（如 NLTK word_tokenize 或基础正则分词），按空格和标点切分。
-停用词处理：
-策略：弱停用词过滤。
-逻辑：加载标准英语停用词表（如 NLTK stopwords），但剔除否定词（如 "not", "no", "never", "neither", "nor"）。
-理由：假新闻检测中，否定句式（“XX did NOT say...”）是关键语义，LSTM 对语序敏感，保留否定词至关重要。
-1.3 文本向量化/编码方案 (Encoding)
-完全适配 Task 3 的 Embedding Layer 参数。
-词表构建 (Vocabulary Building)：
-仅基于训练集 (Training Set) 统计词频。
-保留词频最高的 40,000 个 Token。
-特殊 Token 索引定义：
-<PAD>: 0 (用于 Padding，必须为 0)
-<UNK>: 1 (用于未知词)
-[TITLE]: 2
-[TEXT]: 3
-序列化 (Vectorization)：
-将文本中的 Token 映射为整数索引。
-训练集外的 Token（验证/测试集中的新词）全部映射为 <UNK> (Index 1)。
-1.4 序列长度处理规则 (Truncation & Padding)
-Task 3 设定固定序列总长度 
-L
-=
-512
-L=512
-。由于输入包含标题和正文，需分段处理以防关键信息丢失。
-截断策略 (Truncation)：
-标题优先：标题通常短且包含核心谣言信息，保留完整标题。
-正文截断：计算 剩余可用长度 = 512 - 2 (特殊标记) - 标题长度。
-若 正文长度 > 剩余可用长度，截取正文的前 N 个 Token（Pre-truncation）。
-理由：新闻倒金字塔结构，核心事实在前。Task 3 提及正文取前 384 个 token，此处动态计算以填满 512 为主。
-填充策略 (Padding)：
-若 总长度 < 512，在序列尾部 (Post-padding) 填充 <PAD> (Index 0) 直至长度为 512。
-理由：Task 3 中 batch_first=True，配合 PyTorch LSTM，尾部 Padding 不影响双向 LSTM 的正向计算（需配合 pack_padded_sequence 或掩码，但在基础实现中尾部填充最通用）。
-1.5 防数据泄露规则 (Data Leakage Prevention)
-统计隔离：词频统计（用于构建 Vocabulary）严禁访问验证集和测试集。
-参数冻结：任何基于数据的参数（如 max_len 统计，虽本项目固定 512 但逻辑上应如此）仅来源于训练集。
-未知词处理：验证集/测试集中出现的训练集未见词汇，严格映射为 <UNK>，严禁动态扩充词表。
-
-========================================================
-
-
-
-
-# 使用流程
-========================================================
-# Usage — Quick Start
-<!-- 
-## 1. Environment Setup
--------
 ```bash
-# Create virtual environment and install dependencies
-python -m venv .venv
-source .venv/bin/activate        # macOS / Linux
 pip install -r requirements.txt
+```
 
+The project depends on the following libraries:
 
+- `kaggle>=1.6.14`
+- `pandas>=2.0.0`
+- `numpy>=1.24.0`
+- `python-dotenv>=1.0.0`
+- `tqdm>=4.65.0`
+- `pyyaml>=6.0`
+- `scikit-learn>=1.3.0`
+- `torch>=2.0.0`
+- `seaborn>=0.12.0`
+- `matplotlib>=3.7.0`
 
-DOwnload dataset
--------
-# Requires KAGGLE_USERNAME and KAGGLE_KEY in .env
+### 3.2 Notebook runner
+
+The experiments were reproduced through `run_project.ipynb`. To run the notebook directly, install one of the following tools if needed:
+
+```bash
+pip install notebook
+```
+
+or
+
+```bash
+pip install jupyterlab
+```
+
+### 3.3 Optional GPU check
+
+If you want to train with a GPU, verify that PyTorch detects CUDA correctly.
+
+```bash
+python -c "import torch; print(torch.cuda.is_available())"
+```
+
+If the command returns `True`, the training notebook can use GPU acceleration. If it returns `False`, the project can still be run on CPU.
+
+---
+
+## 4. Dataset Download
+
+The project uses the **ISOT Fake News Dataset** from Kaggle.
+
+### 4.1 Configure Kaggle credentials
+
+Create a `.env` file in the project root with your Kaggle API credentials:
+
+```env
+KAGGLE_USERNAME=your_kaggle_username
+KAGGLE_KEY=your_kaggle_key
+```
+
+### 4.2 Download the dataset
+
+Run:
+
+```bash
 python download_dataset.py
-# → Saves True.csv and Fake.csv to data/raw/
+```
 
-Training model
--------
-python main.py
-# Or specify a custom config:
-python main.py --config configs/config.yaml
+The dataset is downloaded from:
+- owner: `emineyetm`
+- dataset: `fake-news-detection-datasets`
+- https://www.kaggle.com/datasets/emineyetm/fake-news-detection-datasets
 
+### 4.3 Important path note
 
-4. Outputs
-After training completes, the following files are generated:
+There is an important path inconsistency in the current project:
 
-checkpoints/best_model.pt — best model weights (selected by highest fake-news recall on validation set)
-checkpoints/training_history.json — per-epoch loss, metrics, and learning rate
-training.log — full training log
+- `download_dataset.py` downloads and extracts `True.csv` and `Fake.csv` into `./data/`
+- `configs/config.yaml` expects the raw files in `data/raw/`
 
-data/processed/word2idx.json
- — vocabulary mapping -->
-========================================================
+To make the training pipeline work with the current configuration, move the downloaded CSV files into `data/raw/` after download:
+
+```bash
+mkdir -p data/raw
+mv data/True.csv data/raw/True.csv
+mv data/Fake.csv data/raw/Fake.csv
+```
+
+After this step, the raw dataset files should be available at:
+
+- `data/raw/True.csv`
+- `data/raw/Fake.csv`
+
+### 4.4 Prepare the GloVe embeddings
+
+The reported experiments use the file below:
+
+```text
+data/glove/glove.6B.300d.txt
+```
+
+Place `glove.6B.300d.txt` inside `data/glove/` before running the notebook. If this file is missing, the code falls back to random embedding initialization, which means the reproduced results may differ from the reported results.
+
+---
+
+## 5. Configuration Used in the Experiments
+
+The experiments reported in this project were run with the settings in `configs/config.yaml`.
+
+### 5.1 Data and preprocessing
+
+- text column: `text`
+- maximum sequence length: `256`
+- minimum word frequency: `2`
+
+### 5.2 Dataset split
+
+- training set: `70%`
+- validation set: `15%`
+- test set: `15%`
+- random seed: `42`
+- splitting strategy: **stratified split**
+
+### 5.3 Data loading
+
+- batch size: `64`
+- num workers: `2`
+- pin memory: `true`
+
+### 5.4 Embeddings and model
+
+- GloVe directory: `data/glove`
+- GloVe dimension: `300`
+- embedding dimension: `300`
+- hidden dimension: `128`
+- number of LSTM layers: `2`
+- bidirectional: `true`
+- number of classes: `2`
+- embedding dropout: `0.3`
+- LSTM dropout: `0.3`
+- fully connected dropout: `0.5`
+- embeddings frozen: `false`
+
+### 5.5 Training
+
+- number of epochs: `20`
+- optimizer: `Adam`
+- learning rate: `0.001`
+- weight decay: `1e-5`
+- early stopping patience: `5`
+- scheduler: `ReduceLROnPlateau`
+  - factor: `0.5`
+  - patience: `3`
+  - minimum learning rate: `1e-6`
+
+---
+
+## 6. How to Reproduce the Experiments
+
+### Recommended workflow
+
+The most faithful way to reproduce the project is to run the notebook:
+
+```text
+run_project.ipynb
+```
+
+Open the notebook in Jupyter Notebook, JupyterLab, or VS Code and execute all cells from top to bottom.
+
+This is the recommended path because it reproduces the exact training and visualization workflow used in the project.
+
+### What the notebook does
+
+The notebook workflow should perform the following steps:
+
+1. load the project configuration,
+2. load and merge `True.csv` and `Fake.csv`,
+3. assign labels (`0` for real news, `1` for fake news),
+4. perform stratified train/validation/test splitting,
+5. build the vocabulary on the training set only,
+6. save `word2idx.json` to `data/processed/`,
+7. convert texts into padded token sequences,
+8. initialize the Bi-LSTM model,
+9. load GloVe embeddings if available,
+10. train the model,
+11. save the best checkpoint and training history,
+12. generate evaluation plots.
+
+### Expected output files
+
+After a successful run, the following files should be created in `checkpoints/`:
+
+- `best_model.pt`
+- `training_history.json`
+- `loss_curve.png`
+- `recall_curve.png`
+- `combined_loss_recall.png`
+- `val_confusion_matrix.png`
+- `test_confusion_matrix.png`
+- `metrics_bar_chart.png`
+- `metrics_radar_chart.png`
+- `test_labels.npy`
+- `test_preds.npy`
+
+---
+
+## 7. Reproducing the Figures
+
+The visualization utilities are implemented in `src/visualize.py`.
+
+### 7.1 Figures generated by the project
+
+The codebase contains functions to generate the following figures:
+
+- **Loss curve**: training loss vs. validation loss
+- **Recall curve**: fake-news recall over epochs
+- **Combined curve**: loss and fake-news recall on a dual-axis figure
+- **Confusion matrices**: validation and test heatmaps
+- **Metrics bar chart**: class-wise validation vs. test precision, recall, and F1
+- **Radar chart**: class-wise validation vs. test performance
+
+### 7.2 Important note about the radar chart
+
+Although `src/visualize.py` includes a radar chart function and the file `metrics_radar_chart.png` can be generated, **this figure was not used in the final report** because its visual presentation was not satisfactory for formal analysis.
+
+## 8. Final Recommendation
+
+For anyone reproducing this work, the most reliable procedure is:
+
+1. install the dependencies,
+2. configure the Kaggle API,
+3. download the dataset,
+4. move the CSV files into `data/raw/`,
+5. ensure the GloVe file is present in `data/glove/`,
+6. run `run_project.ipynb` from start to finish,
+7. collect the generated model checkpoint, JSON logs, and figures from `checkpoints/`.
+
